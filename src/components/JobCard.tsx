@@ -4,6 +4,8 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/componen
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
+import { Heart, HeartOff, Bookmark, BookmarkCheck } from 'lucide-react';
+import { useJobs } from '@/contexts/JobContext';
 
 type JobProps = {
   id: string;
@@ -17,9 +19,34 @@ type JobProps = {
   timestamp: number;
   status: 'open' | 'in-progress' | 'completed';
   comments: any[];
+  likedBy?: any[];
+  savedBy?: any[];
 };
 
 export const JobCard = ({ job }: { job: JobProps }) => {
+  const {
+    likedJobIds,
+    savedJobIds,
+    toggleJobLike,
+    toggleSaveJob,
+    jobs,
+  } = useJobs();
+
+  // Determinar likes actuales y si el usuario ya dio like
+  const likesCount = Array.isArray(job.likedBy) ? job.likedBy.length : 0;
+  const isLiked = likedJobIds.includes(job.id);
+  const isSaved = savedJobIds.includes(job.id);
+
+  const handleLikeClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    toggleJobLike(job.id);
+  };
+
+  const handleSaveClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    toggleSaveJob(job.id);
+  };
+
   const formatDate = (timestamp: number) => {
     const date = new Date(timestamp);
     return date.toLocaleDateString('es-ES', {
@@ -69,7 +96,7 @@ export const JobCard = ({ job }: { job: JobProps }) => {
             </div>
           </div>
           
-          <div className="flex justify-between items-end">
+          <div className="flex justify-between items-end mt-2 gap-2">
             <div>
               <div className="text-sm font-medium">
                 Presupuesto: ${job.budget}
@@ -84,6 +111,26 @@ export const JobCard = ({ job }: { job: JobProps }) => {
           </div>
         </div>
       </CardContent>
+      <CardFooter className="flex justify-between items-center pt-2">
+        <div className="flex items-center gap-4">
+          <button
+            onClick={handleLikeClick}
+            className={`flex items-center gap-1 text-sm ${isLiked ? 'text-wfc-purple font-bold' : 'text-gray-500 hover:text-wfc-purple'}`}
+            title={isLiked ? "Quitar like" : "Dar like"}
+          >
+            {isLiked ? <HeartOff className="w-4 h-4" /> : <Heart className="w-4 h-4" />}
+            {likesCount}
+          </button>
+          <button
+            onClick={handleSaveClick}
+            className={`flex items-center gap-1 text-sm ${isSaved ? 'text-wfc-purple font-bold' : 'text-gray-500 hover:text-wfc-purple'}`}
+            title={isSaved ? "Quitar de guardados" : "Guardar propuesta"}
+          >
+            {isSaved ? <BookmarkCheck className="w-4 h-4" /> : <Bookmark className="w-4 h-4" />}
+          </button>
+        </div>
+        {/* cualquier otro action */}
+      </CardFooter>
     </Card>
   );
 };
