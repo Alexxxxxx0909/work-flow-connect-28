@@ -17,9 +17,9 @@ type JobProps = {
   userId: string;
   userName: string;
   timestamp: number;
-  status: 'open' | 'in-progress' | 'completed';
+  status: 'open' | 'in-progress' | 'completed' | 'assigned' | 'cancelled';
   comments: any[];
-  likedBy?: any[];
+  likes: string[];
   savedBy?: any[];
 };
 
@@ -28,12 +28,11 @@ export const JobCard = ({ job }: { job: JobProps }) => {
     likedJobIds,
     savedJobIds,
     toggleJobLike,
-    toggleSaveJob,
-    jobs,
+    toggleSaveJob
   } = useJobs();
 
   // Determinar likes actuales y si el usuario ya dio like
-  const likesCount = Array.isArray(job.likedBy) ? job.likedBy.length : 0;
+  const likesCount = Array.isArray(job.likes) ? job.likes.length : 0;
   const isLiked = likedJobIds.includes(job.id);
   const isSaved = savedJobIds.includes(job.id);
 
@@ -74,7 +73,8 @@ export const JobCard = ({ job }: { job: JobProps }) => {
           `}>
             {job.status === 'open' ? 'Abierto' : 
             job.status === 'in-progress' ? 'En progreso' : 
-            'Completado'}
+            job.status === 'completed' ? 'Completado' :
+            job.status === 'assigned' ? 'Asignado' : 'Cancelado'}
           </div>
         </div>
       </CardHeader>

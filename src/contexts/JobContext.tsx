@@ -1,3 +1,4 @@
+
 /**
  * Contexto de Trabajos
  * 
@@ -72,20 +73,14 @@ type JobContextType = {
   addComment: (jobId: string, content: string, user: UserType) => Promise<void>; // Añadir comentario a un trabajo
   addReplyToComment: (jobId: string, commentId: string, content: string, user: UserType) => Promise<void>; // Añadir respuesta a comentario
   getJob: (jobId: string) => JobType | undefined; // Obtener un trabajo por su ID
-  toggleSavedJob: (jobId: string, userId: string) => void; // Guardar/eliminar un trabajo de favoritos
+  toggleSaveJob: (jobId: string) => Promise<void>; // Guardar/eliminar un trabajo de favoritos
   getSavedJobs: (userId: string) => Promise<JobType[]>; // Obtener trabajos guardados por un usuario
-  toggleLike: (jobId: string, userId: string) => void; // Dar/quitar like a un trabajo
-  savedJobs: string[]; // Array de IDs de trabajos guardados por el usuario actual
+  toggleJobLike: (jobId: string) => Promise<void>; // Dar/quitar like a un trabajo
+  savedJobIds: string[]; // Array de IDs de trabajos guardados por el usuario actual
+  likedJobIds: string[]; // Array de IDs de trabajos con like por el usuario actual
   loadJobs: () => Promise<void>; // Método para recargar trabajos
+  fetchJobs: () => Promise<void>; // Alias para loadJobs para mantener compatibilidad
 };
-
-// Tipos para el contexto
-interface DataContextType {
-  getUserById: (userId: string) => UserType | undefined;
-  getAllUsers: () => UserType[];
-  jobCategories: string[];
-  skillsList: string[];
-}
 
 const JobContext = createContext<JobContextType | null>(null);
 
@@ -111,8 +106,21 @@ interface JobProviderProps {
 export const JobProvider: React.FC<JobProviderProps> = ({ children }) => {
   const [jobs, setJobs] = useState<JobType[]>([]);
   const [loading, setLoading] = useState(true);
-  const [savedJobs, setSavedJobs] = useState<string[]>([]);
+  const [savedJobIds, setSavedJobIds] = useState<string[]>([]);
+  const [likedJobIds, setLikedJobIds] = useState<string[]>([]);
   const [currentUser, setCurrentUser] = useState<UserType | null>(null);
+
+  // Obtener usuario actual de localStorage
+  useEffect(() => {
+    const userData = localStorage.getItem('workflowconnect_user');
+    if (userData) {
+      try {
+        setCurrentUser(JSON.parse(userData));
+      } catch (error) {
+        console.error('Error parsing user data:', error);
+      }
+    }
+  }, []);
 
   /**
    * Función para cargar todos los trabajos
@@ -131,6 +139,22 @@ export const JobProvider: React.FC<JobProviderProps> = ({ children }) => {
         status: job.status || 'open'
       }));
       setJobs(formattedJobs);
+      
+      // Actualizar arrays de likes y guardados
+      if (currentUser) {
+        try {
+          const savedJobs = await getSavedJobsService(currentUser.id);
+          setSavedJobIds(savedJobs.map(job => job.id));
+          
+          // Obtener trabajos con like del usuario actual
+          const likedIds = formattedJobs
+            .filter(job => job.likes.includes(currentUser.id))
+            .map(job => job.id);
+          setLikedJobIds(likedIds);
+        } catch (error) {
+          console.error("Error al obtener trabajos guardados/likes:", error);
+        }
+      }
     } catch (error) {
       console.error("Error al cargar trabajos:", error);
     } finally {
@@ -138,10 +162,13 @@ export const JobProvider: React.FC<JobProviderProps> = ({ children }) => {
     }
   };
 
+  // Alias para loadJobs para mantener compatibilidad con código existente
+  const fetchJobs = loadJobs;
+
   // Cargar trabajos iniciales al montar el componente
   useEffect(() => {
     loadJobs();
-  }, []);
+  }, [currentUser]);
 
   /**
    * Función para crear un nuevo trabajo
@@ -324,19 +351,40 @@ export const JobProvider: React.FC<JobProviderProps> = ({ children }) => {
   /**
    * Función para guardar/eliminar un trabajo de favoritos
    */
-  const toggleSavedJob = async (jobId: string, userId: string) => {
+  const toggleSaveJob = async (jobId: string) => {
+    if (!currentUser || !jobId) return;
+    
     try {
-      const isNowSaved = await toggleSavedJobService(userId, jobId);
+      // Verificar si el usuario ya ha guardado este trabajo
+      const isCurrentlySaved = savedJobIds.includes(jobId);
       
-      setSavedJobs(prev => {
-        if (isNowSaved) {
-          return [...prev, jobId];
-        } else {
+      // Llamar al servicio para actualizar en backend
+      await toggleSavedJobService(currentUser.id, jobId);
+      
+      // Actualizar estado local para respuesta inmediata en UI
+      setSavedJobIds(prev => {
+        if (isCurrentlySaved) {
           return prev.filter(id => id !== jobId);
+        } else {
+          return [...prev, jobId];
         }
       });
+      
+      // Mostrar confirmación
+      toast({
+        title: isCurrentlySaved ? "Propuesta eliminada de guardados" : "Propuesta guardada",
+        description: isCurrentlySaved 
+          ? "La propuesta ha sido eliminada de tus guardados" 
+          : "La propuesta ha sido guardada correctamente"
+      });
+      
     } catch (error) {
       console.error("Error al marcar/desmarcar trabajo guardado:", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "No se pudo actualizar estado de guardado. Inténtalo de nuevo."
+      });
     }
   };
 
@@ -347,7 +395,7 @@ export const JobProvider: React.FC<JobProviderProps> = ({ children }) => {
     try {
       const savedJobsData = await getSavedJobsService(userId);
       const savedJobIds = savedJobsData.map(job => job.id);
-      setSavedJobs(savedJobIds);
+      setSavedJobIds(savedJobIds);
       return savedJobsData;
     } catch (error) {
       console.error("Error al obtener trabajos guardados:", error);
@@ -358,26 +406,34 @@ export const JobProvider: React.FC<JobProviderProps> = ({ children }) => {
   /**
    * Función para dar/quitar like a un trabajo
    */
-  const toggleLike = async (jobId: string, userId: string) => {
+  const toggleJobLike = async (jobId: string) => {
     if (!currentUser || !jobId) return;
     
     try {
-      console.log(`Intentando dar/quitar like al trabajo ${jobId} por usuario ${userId}`);
-      // Comprobar si el trabajo existe en nuestro estado
-      const jobExists = jobs.some(job => job.id === jobId);
-      if (!jobExists) {
-        console.log(`El trabajo ${jobId} no existe en el estado actual, recargando trabajos...`);
-        await loadJobs();
-      }
+      console.log(`Intentando dar/quitar like al trabajo ${jobId} por usuario ${currentUser.id}`);
       
-      const isNowLiked = await toggleJobLikeService(jobId, userId);
+      // Verificar si el usuario ya ha dado like a este trabajo
+      const hasLiked = likedJobIds.includes(jobId);
       
+      // Llamar al servicio para actualizar en backend
+      await toggleJobLikeService(jobId, currentUser.id);
+      
+      // Actualizar estado local para respuesta inmediata en UI
+      setLikedJobIds(prev => {
+        if (hasLiked) {
+          return prev.filter(id => id !== jobId);
+        } else {
+          return [...prev, jobId];
+        }
+      });
+      
+      // Actualizar conteo de likes en el trabajo
       setJobs(prevJobs => prevJobs.map(job => {
         if (job.id !== jobId) return job;
         
-        const likes = isNowLiked
-          ? [...job.likes, userId]
-          : job.likes.filter(id => id !== userId);
+        const likes = hasLiked
+          ? job.likes.filter(id => id !== currentUser.id)
+          : [...job.likes, currentUser.id];
         
         return {
           ...job,
@@ -387,10 +443,10 @@ export const JobProvider: React.FC<JobProviderProps> = ({ children }) => {
       
       // Mostrar toast de confirmación
       toast({
-        title: isNowLiked ? "Me gusta añadido" : "Me gusta eliminado",
-        description: isNowLiked 
-          ? "Has indicado que te gusta esta propuesta" 
-          : "Has eliminado tu me gusta de esta propuesta"
+        title: hasLiked ? "Me gusta eliminado" : "Me gusta añadido",
+        description: hasLiked 
+          ? "Has eliminado tu me gusta de esta propuesta" 
+          : "Has indicado que te gusta esta propuesta"
       });
       
     } catch (error) {
@@ -415,11 +471,13 @@ export const JobProvider: React.FC<JobProviderProps> = ({ children }) => {
         addComment,
         addReplyToComment,
         getJob,
-        toggleSavedJob,
+        toggleSaveJob,
         getSavedJobs,
-        toggleLike,
-        savedJobs,
-        loadJobs
+        toggleJobLike,
+        savedJobIds,
+        likedJobIds,
+        loadJobs,
+        fetchJobs
       }}
     >
       {children}
