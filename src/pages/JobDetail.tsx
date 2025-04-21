@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import MainLayout from '@/components/Layout/MainLayout';
@@ -25,7 +24,7 @@ const JobDetail = () => {
   const navigate = useNavigate();
   
   // Hooks de contexto para acceder a datos y funcionalidades
-  const { getJob, addComment, toggleSavedJob, toggleLike, savedJobs, loadJobs } = useJobs(); // Funcionalidades de propuestas
+  const { getJob, addComment, toggleSaveJob, toggleJobLike, savedJobIds, loadJobs } = useJobs(); // Funcionalidades de propuestas
   const { currentUser } = useAuth(); // Información del usuario actual
   const { findExistingPrivateChat, createPrivateChat } = useChat(); // Funcionalidades de chat
   const { getUserById } = useData(); // Para obtener datos de usuarios
@@ -70,7 +69,7 @@ const JobDetail = () => {
   // Obtener información del propietario de la propuesta
   const jobOwner = job ? getUserById(job.userId) : undefined;
   // Verificar si la propuesta está guardada por el usuario actual
-  const isJobSaved = job && savedJobs.includes(job.id);
+  const isJobSaved = job && currentUser ? savedJobIds.includes(job.id) : false;
   // Verificar si el usuario ha dado like a la propuesta
   const hasUserLiked = job && currentUser ? job.likes.includes(currentUser.id) : false;
   
@@ -184,7 +183,7 @@ const JobDetail = () => {
   const handleToggleSave = () => {
     if (!currentUser || !job) return;
     
-    toggleSavedJob(job.id, currentUser.id);
+    toggleSaveJob(job.id);
     toast({
       title: isJobSaved ? "Propuesta eliminada de guardados" : "Propuesta guardada",
       description: isJobSaved 
@@ -221,7 +220,7 @@ const JobDetail = () => {
       };
     });
     
-    toggleLike(job.id, currentUser.id);
+    toggleJobLike(job.id);
   };
 
   /**
